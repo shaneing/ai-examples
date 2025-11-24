@@ -1,0 +1,5 @@
+pandasai
+python-dotenv
+#pandasai-litellm
+pandasai_openai
+streamlit
