@@ -9,6 +9,7 @@ from pandasai.llm.base import LLM
 if TYPE_CHECKING:
     from pandasai.agent.state import AgentState
 
+
 class LocalLLM(LLM):
     def __init__(self, api_base: str, model: str = "", api_key: str = "", **kwargs):
         if not api_key:
@@ -34,8 +35,10 @@ class LocalLLM(LLM):
 
         return response.choices[0].message.content
 
-    def call(self, instruction: BasePrompt, context: AgentState = None) -> str:
-        self.last_prompt = instruction.to_string()
+    def call(
+        self, instruction: BasePrompt, props: dict[str, any], context: AgentState = None
+    ) -> str:
+        self.last_prompt = instruction.template.format(**props)
 
         memory = context.memory if context else None
 

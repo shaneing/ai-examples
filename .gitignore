@@ -3,3 +3,6 @@
 *.log
 *.xlsx
 exports
+venv
+.DS_Store
+__pycache__
