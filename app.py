@@ -19,26 +19,13 @@ plt.rcParams["axes.unicode_minus"] = False
 st.set_page_config(page_title="Finance AI", page_icon="💰", layout="centered")
 st.title("💰 KTech Finance AI Assistant")
 
-prompt_template = """
-您是一名专业的财务管家。您的任务是基于提供的财务数据文件和用户的具体查询，进行深入的数据分析和未来预测。请严格遵循以下步骤：
-1. 仔细阅读并理解提供的财务数据文件内容: {financial_data}。
-2. 准确解析用户提出的具体问题或需求: {user_query}。用户的需求可能涉及历史数据分析、当前财务状况评估或未来趋势预测。
-3. 结合文件数据和用户需求，进行以下操作：
-   a. 数据解读：识别关键财务指标（如收入、支出、利润、现金流等）及其变化趋势。
-   b. 问题分析：针对用户的具体问题，进行相关数据的计算、对比和解释。
-   c. 预测生成：若用户需求涉及预测（如下一季度的利润、未来增长趋势等），请基于历史数据模式和合理的财务假设（如增长率、市场环境）进行推算，并简要说明预测依据。
-4. 输出您的分析和预测结果。输出应：
-   - 使用清晰、专业的财务语言，但避免过度使用专业术语。
-   - 结构化呈现（如使用段落、项目符号或自然的分点叙述），但绝对不要使用任何XML标签。
-   - 确保回答直接针对用户的查询: {user_query}。
-   - 包含关键数据和结论，必要时可包含简要的计算逻辑或假设说明。
-   - 对于预测结果，需明确说明这是基于当前数据的预测，并提示潜在风险或不确定性。
-5. 最终输出必须是纯文本格式。"""
-
 # --- Sidebar: Configuration ---
 with st.sidebar:
     st.header("Configuration")
     api_key = st.text_input("DeepSeek API Key", type="password")
+
+    role = st.selectbox("请选择一个角色：", ["会计", "财务分析师", "老板"])
+
     uploaded_files = st.file_uploader(
         "Upload a File", accept_multiple_files=True, type=["xlsx", "csv"]
     )
@@ -48,6 +35,25 @@ with st.sidebar:
     temperature = st.slider(
         "Temperature", 0.0, 1.0, 0.1, help="Lower is better for code generation"
     )
+
+
+prompt_template = """
+您是一名首席财务管家。您的任务是基于提供的财务数据文件和用户的角色和具体问题，进行深入的数据分析和未来预测。请严格遵循以下步骤：
+1. 仔细阅读并理解提供的财务数据文件内容: {financial_data}。
+2. 请站在用户的角色 {role} 的角度去回答。
+2. 准确解析用户提出的具体问题或需求: {user_query}。用户的需求可能涉及历史数据分析、当前财务状况评估或未来趋势预测。
+3. 结合文件数据和用户需求，进行以下操作：
+   a. 数据解读：识别关键财务指标（如收入、支出、利润、现金流等）及其变化趋势。
+   c. 预测生成：若用户需求涉及预测（如下一季度的利润、未来增长趋势等），请基于历史数据模式和合理的财务假设进行推算，并简要说明预测依据。
+4. 输出您的分析和预测结果。输出应：
+   - 使用清晰、专业的财务语言，但避免过度使用专业术语。
+   - 结构化呈现（如使用段落、项目符号或自然的分点叙述），但绝对不要使用任何XML标签。
+   - 使用图标的方式进行回答，让用户看起来更直观
+5. 输出格式：
+    您的角色是： {role}，针对您的问题分析如下：
+    具体回答内容
+     
+"""
 
 
 # --- Function to setup LLM ---
@@ -109,20 +115,42 @@ if uploaded_files and api_key:
                     memory = Memory()
 
                     data_chunks = split_dataframe(combined_df, chunk_size=1000)
-                    responses = []
+                    inputs_for_model = []
 
+                    paused = st.checkbox("Pause Analysis", value=False)
                     for chunk in data_chunks:
                         chunk_text = chunk.to_csv(index=False, sep="\t")
 
-                        props = {"financial_data": chunk_text, "user_query": user_query}
+                        props = {
+                            "role": role,
+                            "financial_data": chunk_text,
+                            "user_query": user_query,
+                        }
                         BasePrompt.template = prompt_template
                         instruction = BasePrompt(props=props)
-
                         context = AgentState(memory=memory)
-                        response = llm.call(instruction, props, context=context)
-                        responses.append(response)
 
-                    final_response = "\n".join(responses)
+                        while paused:
+                            st.write("Analysis paused. Uncheck to continue.")
+                            paused = st.checkbox("Pause Analysis", value=True)
+
+                        response = llm.call(instruction, props, context=context)
+                        inputs_for_model.append(response)
+
+                    final_analysis_request = "\n".join(inputs_for_model)
+                    final_props = {
+                        "role": role,
+                        "financial_data": "这些是所有数据块的合并分析：\n"
+                        + final_analysis_request,
+                        "user_query": user_query,
+                    }
+                    BasePrompt.template = prompt_template
+                    final_instruction = BasePrompt(props=final_props)
+                    final_response = llm.call(
+                        final_instruction,
+                        props=final_props,
+                        context=AgentState(memory=memory),
+                    )
 
                     # Handle Response Types (Text vs Image)
                     if (
